@@ -4,7 +4,6 @@ numpy
 scikit-learn
 joblib
 matplotlib
-shap
 typing_extensions
 protobuf
 altair
