@@ -456,53 +456,30 @@ if st.session_state.finished:
 5. **Check your credit reports regularly** – Correct any errors or fraudulent entries early.
         """)
 
-        # ---------------- SHAP EXPLANATION (Custom Plot) -------------------
-    st.write("### 🔍 Top Feature Contributions (SHAP-style)")
-
-    # 1) Prepare input and feature names
-    input_df = pd.DataFrame([st.session_state.answers])
+            # ---------------- MODEL EXPLANATION (Feature Importances) -------------------
+    st.write("### 🔍 Top Feature Contributions (Model Feature Importances)")
 
     prep = model.named_steps["prep"]
-    transformed_input = prep.transform(input_df)
+    clf = model.named_steps["clf"]
 
-    # Convert to dense array if it's sparse
-    if hasattr(transformed_input, "toarray"):
-        X_trans = transformed_input.toarray()
-    else:
-        X_trans = np.array(transformed_input)
-
-    # Try to get feature names from the preprocessor
+    # Get transformed feature names
     try:
         feature_names = prep.get_feature_names_out()
     except Exception:
-        feature_names = [f"feature_{i}" for i in range(X_trans.shape[1])]
+        feature_names = [f"feature_{i}" for i in range(clf.n_features_in_)]
 
-    # 2) Compute SHAP values for the random forest
-    explainer = shap.TreeExplainer(model.named_steps["clf"])
-    shap_expl = explainer(X_trans)  # new API: returns an Explanation object
+    importances = clf.feature_importances_
 
-    # Handle binary / multiclass shapes
-    vals = shap_expl.values
-    if vals.ndim == 3:
-        # shape: (n_samples, n_classes, n_features) -> take class 1 for sample 0
-        shap_row = vals[0, 1, :]
-    else:
-        # shape: (n_samples, n_features)
-        shap_row = vals[0, :]
-
-    # 3) Build a DataFrame of contributions
-    contrib = pd.DataFrame({
+    # Build a DataFrame for top features
+    fi = pd.DataFrame({
         "feature": feature_names,
-        "shap": shap_row,
+        "importance": importances,
     })
-    contrib["abs_shap"] = contrib["shap"].abs()
+    fi = fi.sort_values("importance", ascending=False).head(5)
 
-    top = contrib.sort_values("abs_shap", ascending=False).head(5)
-
-    # 4) Plot with matplotlib (no shap.plots.bar to avoid TypeError)
     fig, ax = plt.subplots()
-    ax.barh(top["feature"], top["shap"])
+    ax.barh(fi["feature"], fi["importance"])
     ax.invert_yaxis()
-    ax.set_xlabel("SHAP value (impact on approval)")
-    ax.set_title("Top 5 contributing features")
+    ax.set_xlabel("Importance")
+    ax.set_title("Top 5 features affecting approval decision")
     st.pyplot(fig)
