@@ -29,7 +29,7 @@ def load_or_train_model():
         X = df.iloc[:, :-1]
         y = df.iloc[:, -1]
 
-        # Categorical and numerical column indices (from original dataset)
+        # Categorical & numerical column indices
         cat_idx = [0, 3, 4, 5, 7, 8, 10, 11]
         num_idx = list(set(range(14)) - set(cat_idx))
 
@@ -51,7 +51,6 @@ def load_or_train_model():
         )
         model.fit(X_train, y_train)
 
-        # Metrics
         y_pred = model.predict(X_test)
         y_proba = model.predict_proba(X_test)[:, 1]
 
@@ -79,7 +78,7 @@ else:
 
 # ------------------- Session State Setup -------------------
 if "step" not in st.session_state:
-    st.session_state.step = -1  # -1 = personal details page
+    st.session_state.step = -1  # -1 = applicant info, 0..13 = features
 if "answers" not in st.session_state:
     st.session_state.answers = [0.0] * 14
 if "finished" not in st.session_state:
@@ -112,13 +111,260 @@ if st.sidebar.button("🔄 Start New Application"):
     reset_application()
     st.sidebar.success("New application started.")
 
-# Progress info
 if st.session_state.step >= 0:
     st.sidebar.markdown(f"**Current question:** {st.session_state.step + 1} / 14")
 else:
     st.sidebar.markdown("**Current step:** Applicant Info")
 
-# ------------------- PERSONAL DETAILS PAGE (step = -1) -------------------
+# ------------------- Helper: UI for each feature -------------------
+def ask_feature(step: int, current_value: float):
+    """
+    Returns the numeric value for the given step based on user input.
+    Mapping from UI options -> numeric codes / representative values.
+    """
+    # 0: Married (A1)
+    if step == 0:
+        options = ["Married", "Not married"]
+        mapping = {"Married": 1.0, "Not married": 0.0}
+        default_idx = 0
+        for i, o in enumerate(options):
+            if mapping[o] == current_value:
+                default_idx = i
+        choice = st.selectbox(
+            "Marital status",
+            options,
+            index=default_idx,
+            help="Select if you are married or not."
+        )
+        return mapping[choice]
+
+    # 1: Age bucket (A2)
+    elif step == 1:
+        options = ["18–25", "26–45", "46–80"]
+        # Use midpoints as numeric values
+        mapping = {
+            "18–25": 21.0,
+            "26–45": 35.0,
+            "46–80": 60.0,
+        }
+        # Find default by nearest
+        default_idx = 0
+        for i, o in enumerate(options):
+            if mapping[o] == current_value:
+                default_idx = i
+        choice = st.selectbox(
+            "Age range",
+            options,
+            index=default_idx,
+            help="Select your age range."
+        )
+        return mapping[choice]
+
+    # 2: Existing Debt (A3)
+    elif step == 2:
+        return st.number_input(
+            "Existing debt amount",
+            value=float(current_value),
+            min_value=0.0,
+            step=100.0,
+            help="Enter your total existing debt amount."
+        )
+
+    # 3: Employment Category (A4)
+    elif step == 3:
+        options = ["Student", "IT", "Healthcare", "Civil", "Others"]
+        mapping = {o: float(i) for i, o in enumerate(options)}  # 0..4
+        default_idx = 0
+        for i, o in enumerate(options):
+            if mapping[o] == current_value:
+                default_idx = i
+        choice = st.selectbox(
+            "Employment category",
+            options,
+            index=default_idx,
+            help="Select the category that best describes your employment."
+        )
+        return mapping[choice]
+
+    # 4: Loan purpose (A5)
+    elif step == 4:
+        options = ["Education loan", "Personal loan", "Other reason not stated"]
+        mapping = {o: float(i) for i, o in enumerate(options)}  # 0..2
+        default_idx = 0
+        for i, o in enumerate(options):
+            if mapping[o] == current_value:
+                default_idx = i
+        choice = st.selectbox(
+            "Loan purpose",
+            options,
+            index=default_idx,
+            help="Select the primary purpose of this loan."
+        )
+        return mapping[choice]
+
+    # 5: Account type (A6)
+    elif step == 5:
+        options = ["Savings account", "Current account", "Salary account", "Joint account", "Other"]
+        mapping = {o: float(i) for i, o in enumerate(options)}  # 0..4
+        default_idx = 0
+        for i, o in enumerate(options):
+            if mapping[o] == current_value:
+                default_idx = i
+        choice = st.selectbox(
+            "Account type",
+            options,
+            index=default_idx,
+            help="Select the main type of bank account you use."
+        )
+        return mapping[choice]
+
+    # 6: Years of employment (A7)
+    elif step == 6:
+        return st.number_input(
+            "Years of employment",
+            value=float(current_value),
+            min_value=0.0,
+            step=1.0,
+            help="Enter the number of years you have been employed."
+        )
+
+    # 7: Occupation / Job class (A8)
+    elif step == 7:
+        options = ["Entry-level", "Mid-level professional", "Senior professional", "Self-employed", "Other"]
+        mapping = {o: float(i) for i, o in enumerate(options)}  # 0..4
+        default_idx = 0
+        for i, o in enumerate(options):
+            if mapping[o] == current_value:
+                default_idx = i
+        choice = st.selectbox(
+            "Occupation / Job class",
+            options,
+            index=default_idx,
+            help="Select which best describes your occupation level."
+        )
+        return mapping[choice]
+
+    # 8: Housing Status (A9)
+    elif step == 8:
+        options = ["Rent", "Own house property"]
+        mapping = {"Rent": 0.0, "Own house property": 1.0}
+        default_idx = 0
+        for i, o in enumerate(options):
+            if mapping[o] == current_value:
+                default_idx = i
+        choice = st.selectbox(
+            "Housing status",
+            options,
+            index=default_idx,
+            help="Select whether you rent or own a house."
+        )
+        return mapping[choice]
+
+    # 9: Savings / Investment amount (A10)
+    elif step == 9:
+        return st.number_input(
+            "Savings / Investment amount",
+            value=float(current_value),
+            min_value=0.0,
+            step=500.0,
+            help="Enter the approximate total amount of your savings or investments."
+        )
+
+    # 10: Dependents in household (A11)
+    elif step == 10:
+        options = ["2", "3", "4", "5 or more"]
+        mapping = {
+            "2": 2.0,
+            "3": 3.0,
+            "4": 4.0,
+            "5 or more": 5.0,
+        }
+        default_idx = 0
+        for i, o in enumerate(options):
+            if mapping[o] == current_value:
+                default_idx = i
+        choice = st.selectbox(
+            "Dependents in household",
+            options,
+            index=default_idx,
+            help="Select how many dependents live in your household."
+        )
+        return mapping[choice]
+
+    # 11: Additional loan (A12)
+    elif step == 11:
+        options = ["No other loan", "Car loan", "Home loan", "Credit card debt", "Other"]
+        mapping = {o: float(i) for i, o in enumerate(options)}  # 0..4
+        default_idx = 0
+        for i, o in enumerate(options):
+            if mapping[o] == current_value:
+                default_idx = i
+        choice = st.selectbox(
+            "Additional loan",
+            options,
+            index=default_idx,
+            help="Select if you have any other active loans or credit obligations."
+        )
+        return mapping[choice]
+
+    # 12: Existing credit balance (A13) -> ranges to midpoints
+    elif step == 12:
+        options = [
+            "0 – 1,000",
+            "1,001 – 5,000",
+            "5,001 – 10,000",
+            "10,001 – 20,000",
+            "20,001+",
+        ]
+        mapping = {
+            "0 – 1,000": 500.0,
+            "1,001 – 5,000": 3000.0,
+            "5,001 – 10,000": 7500.0,
+            "10,001 – 20,000": 15000.0,
+            "20,001+": 25000.0,
+        }
+        default_idx = 0
+        for i, o in enumerate(options):
+            if mapping[o] == current_value:
+                default_idx = i
+        choice = st.selectbox(
+            "Existing credit balance",
+            options,
+            index=default_idx,
+            help="Select the approximate range of your existing total credit balance."
+        )
+        return mapping[choice]
+
+    # 13: Credit score (A14)
+    elif step == 13:
+        options = [
+            "600–625",
+            "626–680",
+            "681–720",
+            "721–800",
+        ]
+        mapping = {
+            "600–625": 612.0,
+            "626–680": 653.0,
+            "681–720": 700.0,
+            "721–800": 760.0,
+        }
+        default_idx = 0
+        for i, o in enumerate(options):
+            if mapping[o] == current_value:
+                default_idx = i
+        choice = st.selectbox(
+            "Credit score range",
+            options,
+            index=default_idx,
+            help="Select your approximate credit score range."
+        )
+        return mapping[choice]
+
+    # Fallback (should not happen)
+    return current_value
+
+# ------------------- APPLICANT INFO PAGE (step = -1) -------------------
 if st.session_state.step == -1 and not st.session_state.finished:
     st.subheader("👤 Applicant Information")
 
@@ -140,98 +386,26 @@ if st.session_state.step == -1 and not st.session_state.finished:
             st.error("Please enter both your name and email address.")
         else:
             st.session_state.step = 0
-            st.experimental_rerun()
+            st.rerun()
 
-# ------------------- FEATURE METADATA (HUMAN-FRIENDLY NAMES) -------------------
-# These are inferred / conventional interpretations of the anonymized features.
-feature_meta = [
-    {
-        "label": "Q1: Marital / Status Category (Feature A1)",
-        "help": "Categorical code representing your personal/relationship or account status (e.g., 0, 1, 2...)."
-    },
-    {
-        "label": "Q2: Age / Financial Score (Feature A2)",
-        "help": "Numeric value often interpreted as age or an internal financial score.",
-    },
-    {
-        "label": "Q3: Existing Debt / Loan Amount (Feature A3)",
-        "help": "Numeric amount representing your current debts or requested loan size.",
-    },
-    {
-        "label": "Q4: Employment Category (Feature A4)",
-        "help": "Categorical code for job type or employment status (e.g., full-time, part-time, self-employed).",
-    },
-    {
-        "label": "Q5: Loan Purpose Category (Feature A5)",
-        "help": "Categorical code indicating what the loan is for (personal, car, business, etc.).",
-    },
-    {
-        "label": "Q6: Account Type / Financial Category (Feature A6)",
-        "help": "Categorical code for account type or another internal risk category.",
-    },
-    {
-        "label": "Q7: Years of Employment (Feature A7)",
-        "help": "Approximate years you have been employed (e.g., 0–40).",
-    },
-    {
-        "label": "Q8: Occupation / Job Class (Feature A8)",
-        "help": "Categorical code representing occupation type or job class.",
-    },
-    {
-        "label": "Q9: Housing Status (Feature A9)",
-        "help": "Categorical code for housing situation (rent, own, mortgage, etc.).",
-    },
-    {
-        "label": "Q10: Savings / Investment Amount (Feature A10)",
-        "help": "Numeric value representing your savings/investments or similar assets.",
-    },
-    {
-        "label": "Q11: Dependents / Household Category (Feature A11)",
-        "help": "Categorical code for number of dependents or household composition.",
-    },
-    {
-        "label": "Q12: Additional Loan / Work Category (Feature A12)",
-        "help": "Categorical flag for another loan or employment-related category.",
-    },
-    {
-        "label": "Q13: Existing Credit Balance (Feature A13)",
-        "help": "Numeric value for current total credit balance or exposure.",
-    },
-    {
-        "label": "Q14: Credit Score / Payment Index (Feature A14)",
-        "help": "Numeric summary of your past payment behavior or internal credit index.",
-    },
-]
-
-# ------------------- QUESTION FLOW FOR 14 FEATURES -------------------
+# ------------------- QUESTION FLOW (steps 0–13) -------------------
 if st.session_state.step >= 0 and not st.session_state.finished:
     step = st.session_state.step
 
     st.subheader("📝 Application Questionnaire")
-    st.write("Answer each question carefully. Once you click **Next**, you move to the next step.")
+    st.write("Answer each question carefully. Click **Next** to move forward.")
 
-    meta = feature_meta[step]
-    question = meta["label"]
-    help_text = meta["help"]
     current_val = st.session_state.answers[step]
-
-    answer = st.number_input(
-        question,
-        value=float(current_val),
-        step=1.0,
-        help=help_text,
-        key=f"feat_{step}"
-    )
+    new_value = ask_feature(step, current_val)
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Next ➡️"):
-            st.session_state.answers[step] = float(answer)
+            st.session_state.answers[step] = float(new_value)
 
             if step == 13:
                 # Last question -> run prediction
                 input_df = pd.DataFrame([st.session_state.answers])
-
                 prediction = model.predict(input_df)[0]
                 probability = model.predict_proba(input_df)[0][1]
                 decision = "✅ APPROVED" if prediction == 1 else "⛔ DENIED"
@@ -242,14 +416,14 @@ if st.session_state.step >= 0 and not st.session_state.finished:
             else:
                 st.session_state.step += 1
 
-            st.experimental_rerun()
+            st.rerun()
 
     with col2:
         if step > 0:
             if st.button("⬅️ Previous"):
-                st.session_state.answers[step] = float(answer)
+                st.session_state.answers[step] = float(new_value)
                 st.session_state.step -= 1
-                st.experimental_rerun()
+                st.rerun()
 
 # ------------------- RESULT PAGE -------------------
 if st.session_state.finished:
@@ -276,7 +450,7 @@ if st.session_state.finished:
         st.write("### 💡 Tips to Improve / Maintain Your Credit Score")
         st.markdown("""
 1. **Pay bills on time** – Payment history is the biggest factor in your score.  
-2. **Reduce credit utilization below 30%** – Try to keep used credit well below the limit.  
+2. **Reduce credit utilization below 30%** – Try to keep used credit well below your limit.  
 3. **Avoid too many new applications** – Each hard inquiry can slightly reduce your score.  
 4. **Keep older accounts open** – Older accounts help build a longer credit history.  
 5. **Check your credit reports regularly** – Correct any errors or fraudulent entries early.
